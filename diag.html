@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>게임하자 설치 진단</title>
+<link rel="manifest" href="./manifest.json">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px 16px 60px;background:#0a0b0e;color:#eef1f6;font-family:'Pretendard',-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  h1{font-size:19px;font-weight:800;margin:0 0 4px;letter-spacing:-.4px}
+  .sub{font-size:13px;color:#8b90a2;margin-bottom:20px;line-height:1.5}
+  .list{display:flex;flex-direction:column;gap:9px}
+  .row{display:flex;align-items:flex-start;gap:12px;background:#14161c;border:1px solid #23262f;border-radius:14px;padding:13px 14px}
+  .dot{width:22px;height:22px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+  .ok{background:rgba(182,230,63,.14);color:#b6e63f}
+  .bad{background:rgba(255,107,107,.14);color:#ff6b6b}
+  .warn{background:rgba(255,196,84,.14);color:#ffc454}
+  .k{font-size:13.5px;font-weight:700;color:#eef1f6}
+  .v{font-size:12.5px;color:#8b90a2;margin-top:3px;line-height:1.5;word-break:break-all}
+  .verdict{margin:22px 0 0;background:#14161c;border:1px solid #23262f;border-radius:16px;padding:16px}
+  .verdict b{color:#b6e63f}
+  .verdict p{font-size:13.5px;color:#c7ccda;line-height:1.65;margin:0 0 10px}
+  .verdict p:last-child{margin:0}
+  a{color:#b6e63f;text-decoration:none}
+</style>
+</head>
+<body>
+<h1>설치 진단</h1>
+<div class="sub">문제가 생긴 휴대폰/브라우저에서 이 페이지를 열고, 화면을 캡처해서 보여주세요.</div>
+<div class="list" id="list"></div>
+<div class="verdict" id="verdict"></div>
+<script>
+const rows = [];
+function add(state, k, v){ rows.push({state,k,v}); }
+function render(){
+  document.getElementById('list').innerHTML = rows.map(r =>
+    '<div class="row"><div class="dot '+r.state+'">'+(r.state==='ok'?'✓':r.state==='bad'?'✕':'!')+'</div>'+
+    '<div><div class="k">'+r.k+'</div><div class="v">'+r.v+'</div></div></div>').join('');
+}
+const ua = navigator.userAgent;
+const isFirefox = /firefox|fxios/i.test(ua);
+const isIOS = /iphone|ipad|ipod/i.test(ua);
+const inApp = /kakaotalk|instagram|fban|fbav|line\/|naver|daumapps|whale|snapchat/i.test(ua);
+const secure = window.isSecureContext;
+
+add(secure?'ok':'bad', '보안 연결 (HTTPS)', location.protocol + '//' + location.host + ' — ' + (secure?'정상':'HTTP라서 설치가 차단됩니다'));
+add(isFirefox?'bad':inApp?'bad':'ok', '브라우저', (isFirefox?'파이어폭스 — PWA 설치를 지원하지 않습니다':inApp?'앱 내 브라우저 — 설치 불가, 크롬/사파리로 열어야 합니다':'설치 가능한 브라우저') + '<br>' + ua);
+add('serviceWorker' in navigator ? 'ok':'bad', '서비스워커 지원', 'serviceWorker' in navigator ? '지원함' : '지원 안 함');
+add(window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true ? 'ok':'warn', '설치 여부', window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true ? '이미 설치된 앱으로 실행 중' : '아직 브라우저에서 보고 있음');
+render();
+
+let promptFired = false;
+window.addEventListener('beforeinstallprompt', function(){ promptFired = true; });
+
+(async function(){
+  try {
+    const r = await fetch('./manifest.json', {cache:'no-store'});
+    const j = r.ok ? await r.json() : null;
+    add(r.ok?'ok':'bad', 'manifest.json', r.ok ? '불러옴 — 이름 "'+j.name+'", 아이콘 '+j.icons.length+'개' : 'HTTP '+r.status+' — 파일이 없거나 경로가 틀렸습니다');
+  } catch(e){ add('bad','manifest.json','불러오지 못함: '+e.message); }
+  try {
+    const r = await fetch('./icon-192.png', {cache:'no-store'});
+    add(r.ok?'ok':'bad','아이콘 파일', r.ok ? 'icon-192.png 정상' : 'icon-192.png 없음 (HTTP '+r.status+')');
+  } catch(e){ add('bad','아이콘 파일','불러오지 못함'); }
+  try {
+    const r = await fetch('./support.js', {cache:'no-store'});
+    add(r.ok?'ok':'bad','support.js', r.ok ? '정상 — 앱이 열립니다' : 'HTTP '+r.status+' — 앱이 흰 화면으로 뜹니다');
+  } catch(e){ add('bad','support.js','불러오지 못함'); }
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('./sw.js');
+      const regs = await navigator.serviceWorker.getRegistrations();
+      add(regs.length?'ok':'bad','서비스워커 등록', regs.length ? regs.length+'개 등록됨' : '등록 실패');
+    } catch(e){ add('bad','서비스워커 등록','실패: '+e.message); }
+  }
+  render();
+  setTimeout(function(){
+    add(promptFired?'ok':isIOS?'warn':'bad','브라우저 자동 설치 신호', promptFired ? '받음 — 설치 버튼이 동작합니다' : isIOS ? '아이폰은 이 신호가 없는 게 정상입니다 (공유 → 홈 화면에 추가로 설치)' : '4초 안에 안 옴 — 아래 안내를 확인하세요');
+    render();
+    const bad = rows.filter(function(r){return r.state==='bad';});
+    const v = document.getElementById('verdict');
+    if (!bad.length) {
+      v.innerHTML = '<p><b>설치 조건은 모두 통과했습니다.</b></p><p>아이폰이면 사파리 공유 버튼 → ‘홈 화면에 추가’. 안드로이드 크롬이면 ⋮ 메뉴 → ‘앱 설치’를 누르면 됩니다. 자동 팝업은 방문 시간·재방문 여부에 따라 크롬이 알아서 띄우거나 안 띄우는 것이라, 안 뜨는 게 고장은 아닙니다.</p>';
+    } else {
+      v.innerHTML = '<p><b>막힌 항목 '+bad.length+'개</b></p>' + bad.map(function(r){return '<p>· '+r.k+' — '+r.v.split('<br>')[0]+'</p>';}).join('');
+    }
+  }, 4000);
+})();
+</script>
+</body>
+</html>

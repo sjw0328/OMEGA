@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /mobile.html
+
+Sitemap: https://xn--o79al52cbb679h.kro.kr/sitemap.xml
